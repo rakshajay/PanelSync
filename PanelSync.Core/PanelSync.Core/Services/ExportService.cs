@@ -57,5 +57,18 @@ namespace PanelSync.Core.Services
 
             return modelPath;
         }
+
+        //[09/14/2025]:Raksha- Save IGES into exports\iges (atomic)
+        public string SaveRefIges(string exportRoot, string projectId, string zone, byte[] igesBytes)
+        {
+            var name = PathRules.BuildRefIgesName(projectId, zone, DateTime.UtcNow);
+            var outDir = Path.Combine(exportRoot, "exports", "iges");
+            _guard.EnsureFolder(outDir);
+            var path = Path.Combine(outDir, name);
+            _log.Info("//[09/14/2025]:Raksha- Exporting ref IGES -> " + path);
+            AtomicWriter.WriteAllBytes(path, igesBytes);
+            return path;
+        }
+
     }
 }

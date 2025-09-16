@@ -1,26 +1,36 @@
-//[09/03/2025]:Raksha- Export ONLY Lines/Polylines/Circles via ARRAY export (no selection needed)
+//[09/14/2025]:Raksha- Export Lines/Circles/Rectangles/Polylines/Planes to IGES
 
 function log(m) { try { print(m); } catch (_) { } }
 function j(o) { try { return JSON.stringify(o); } catch (_) { return String(o); } }
-
+for (var key in this) {
+    try {
+        if (typeof this[key] === "object" || typeof this[key] === "function") {
+            log("Available API: " + key);
+        }
+    } catch (e) { }
+}
 // ---------- Params (override via --ScriptParam) ----------
 var project = (typeof project !== "undefined" && project) || "C:/Users/raksh/Downloads/Expe1.3dr";
-var out = (typeof out !== "undefined" && out) || "C:/Temp/geom_LCP.dxf"; // ensure folder exists!
-var groupPath = (typeof groupPath !== "undefined" && groupPath) || ""; // e.g. "/Geometric Group" or "" for whole project
+var out = (typeof out !== "undefined" && out) || "C:/Temp/geom_out.igs";
+var groupPath = (typeof groupPath !== "undefined" && groupPath) || ""; // e.g. "/Geometric Group"
 // ---------------------------------------------------------
 
-//[09/08/2025]:Raksha- normalize Windows paths to avoid \r \n escapes
+//[09/14/2025]:Raksha- Normalize Windows paths to forward slashes
 function normPath(p) { return (p || "").replace(/\\/g, "/"); }
 project = normPath(project);
 out = normPath(out);
-groupPath = groupPath || ""; // safe default
+groupPath = groupPath || "";
 
-//for (var z = 0; z < Math.min(10, picked.length); z++) {
-//    log("  Picked[" + z + "] path=" + pathOf(picked[z]) + " type=" + typeOf(picked[z]));
-//}
-
-// We want: SLine, SCircle, SMultiline/SPolyline (your dump showed SMultiline for polyline)
-var WANT = { "SLINE": 1, "SCIRCLE": 1, "SMULTILINE": 1, "SPOLYLINE": 1, "POLYLINE": 1 };
+//[09/14/2025]:Raksha- Entity types we want
+var WANT = {
+    "SLINE": 1,
+    "SCIRCLE": 1,
+    "SMULTILINE": 1,
+    "SPOLYLINE": 1,
+    "POLYLINE": 1,
+    "SRECTANGLE": 1,
+    "SPLANE": 1
+};
 
 function ensureArray(v) { return (v && v.length) ? v : []; }
 function safe(fn, d) { try { return fn(); } catch (_) { return d; } }
@@ -32,7 +42,7 @@ function typeOf(x) {
 }
 function pathOf(x) { return safe(function () { return x.GetPath && x.GetPath(); }, ""); }
 function isUnder(path, base) {
-    if (!base) return true; // project-wide
+    if (!base) return true; // whole project
     if (!path || typeof path !== "string") return false;
     if (path === base) return true;
     var b = base.endsWith("/") ? base : (base + "/");
@@ -40,13 +50,13 @@ function isUnder(path, base) {
 }
 
 try {
-    log("//[09/03/2025]:Raksha- OpenDoc -> " + project);
+    log("//[09/14/2025]:Raksha- OpenDoc -> " + project);
     var rcOpen = OpenDoc(project);
     if (!rcOpen || typeof rcOpen.ErrorCode === "undefined" || rcOpen.ErrorCode !== 0)
         throw new Error("OpenDoc failed: " + j(rcOpen));
 
-    var feats = ensureArray(SFeature.All()); // circles/lines visible here in your dump
-    var comps = ensureArray(SComp.All());    // polylines (SMultiline) visible here in your dump
+    var feats = ensureArray(SFeature.All());
+    var comps = ensureArray(SComp.All());
 
     var picked = [];
     var seen = new WeakSet();
@@ -68,22 +78,22 @@ try {
         var tt = typeOf(picked[z]);
         counts[tt] = (counts[tt] || 0) + 1;
     }
-    log("//[09/03/2025]:Raksha- Scope: " + (groupPath ? ("under '" + groupPath + "'") : "whole project"));
-    log("//[09/03/2025]:Raksha- Picked count=" + picked.length);
+    log("//[09/14/2025]:Raksha- Scope: " + (groupPath ? ("under '" + groupPath + "'") : "whole project"));
+    log("//[09/14/2025]:Raksha- Picked count=" + picked.length);
     for (var key in counts) log("  " + key + " -> " + counts[key]);
 
     if (picked.length === 0)
-        throw new Error("No Lines/Polylines/Circles matched. Check type names in debug listing.");
+        throw new Error("No matching entities found (Line/Circle/Rectangle/Plane).");
 
-    // Export using ARRAY (works on your build)
-    log("//[09/03/2025]:Raksha- ExportProject(array) -> " + out);
-    var rc = SSurveyingFormat.ExportProject(out, picked);
+    // Export using IGES
+    log("//[09/14/2025]:Raksha- ExportProject(IGES) -> " + out);
+    var rc = SExchangeFormat.ExportProject(out, picked, "IGES");
     if (!rc || typeof rc.ErrorCode === "undefined" || rc.ErrorCode !== 0)
-        throw new Error("ExportProject(array) failed: " + j(rc));
+        throw new Error("IGES ExportProject failed: " + j(rc));
 
-    log("//[09/03/2025]:Raksha- DXF export complete -> " + out);
+    log("//[09/14/2025]:Raksha- IGES export complete -> " + out);
 }
 catch (err) {
-    log("//[09/03/2025]:Raksha- ERROR: " + err);
-    throw err; //[09/03/2025]:Raksha- ensure non-zero exit for C#
+    log("//[09/14/2025]:Raksha- ERROR: " + err);
+    throw err;
 }

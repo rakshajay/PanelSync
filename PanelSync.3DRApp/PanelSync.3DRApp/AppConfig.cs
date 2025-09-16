@@ -13,6 +13,10 @@ namespace PanelSync._3DRApp
         public string LogsRoot { get; set; } = "";
         public string ThreeDRFilePath { get; set; } = "";
 
+        //[09/14/2025]:Raksha- Added IGES path
+        public string ThreeDRExportIges { get; set; } = "";
+
+
         private static readonly string ConfigPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "PanelSync", "3DRApp", "appsettings.json");
@@ -22,7 +26,12 @@ namespace PanelSync._3DRApp
             try { if (File.Exists(ConfigPath)) return JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(ConfigPath)) ?? new AppConfig(); }
             catch { }
             var cfg = new AppConfig();
-            var (dxf, obj, logs, _) = HotFolders.EnsureDefaults();
+            var (dxf, obj,igess, logs, _) = HotFolders.EnsureDefaults();
+            //[09/14/2025]:Raksha- Default IGES sibling of DXF: ...\3DR\exports\iges
+            var iges = Path.Combine(Path.GetDirectoryName(dxf)!, "iges");
+            Directory.CreateDirectory(iges);
+            cfg.ThreeDRExportIges = iges;
+
             cfg.ThreeDRExportDxf = dxf;
             cfg.InventorExportObj = obj;
             cfg.LogsRoot = logs;

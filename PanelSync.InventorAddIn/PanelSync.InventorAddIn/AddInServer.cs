@@ -8,8 +8,9 @@ using Inventor;
 using SysEnv = System.Environment;
 using IOPath = System.IO.Path;
 using IOFile = System.IO.File;
+using PanelSync.Core.Logging;
 
-namespace PanelSync.InventorAddin
+namespace PanelSync.InventorAddIn
 {
     //[08/28/2025]:Raksha- Make the add-in class visible to COM and give it a stable GUID
     [ComVisible(true)]
@@ -22,8 +23,8 @@ namespace PanelSync.InventorAddin
         public void Activate(ApplicationAddInSite addInSiteObject, bool firstTime)
         {
             _inv = addInSiteObject.Application;
+            var desktop = System.IO.Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.UserProfile), "OneDrive", "Desktop");
 
-            var desktop = SysEnv.GetFolderPath(System.Environment.SpecialFolder.DesktopDirectory);
             var jobsDir = IOPath.Combine(desktop, "PanelSyncHot", "Jobs");
             var logsDir = IOPath.Combine(desktop, "PanelSyncHot", "logs");
             Directory.CreateDirectory(jobsDir);
@@ -32,8 +33,11 @@ namespace PanelSync.InventorAddin
             var logPath = IOPath.Combine(logsDir, "inventor-addin.log");
             var logger = new SimpleFileLogger(logPath);
 
-            _watcher = new JobWatcher(_inv, jobsDir, logger);
+            // FIX: Swap jobsDir and logger to match JobWatcher signature
+            _watcher = new JobWatcher(_inv, logger, jobsDir);
             logger.Info("//[08/28/2025]:Raksha- Add-in activated.");
+            logger.Info("4");
+            logger.Info("// Desktop path resolved to: " + desktop);
         }
 
         public void Deactivate()
@@ -42,7 +46,6 @@ namespace PanelSync.InventorAddin
             _inv = null;
             _watcher = null;
         }
-
         public void ExecuteCommand(int commandID) { }
         public object Automation { get { return null; } }
     }

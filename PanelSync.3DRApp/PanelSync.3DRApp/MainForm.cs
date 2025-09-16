@@ -28,6 +28,11 @@ namespace PanelSync._3DRApp
         private RichTextBox rtb = new RichTextBox();
         private TextBox txt3drPath = new TextBox();
         private Button btnBrowse3dr = new Button();
+        //[09/14/2025]:Raksha- IGES UI
+        private TextBox txtIges = new TextBox();
+        private Button btnBrowseIges = new Button();
+        private Button btnExportIgesToInventor = new Button();
+
 
         private FileSystemWatcher? _objWatcher;
 
@@ -36,7 +41,7 @@ namespace PanelSync._3DRApp
             Text = "PanelSync.3DRApp";
             Width = 920; Height = 560; StartPosition = FormStartPosition.CenterScreen;
 
-            var (_, _, logs, _) = HotFolders.EnsureDefaults();
+            var (_, _, _, logs, _) = HotFolders.EnsureDefaults();
             _log = new SimpleFileLogger(Path.Combine(logs, "3drapp.log"));
 
             BuildUi();
@@ -68,6 +73,17 @@ namespace PanelSync._3DRApp
             btnBrowseObj.Text = "Browse..."; btnBrowseObj.Left = 690; btnBrowseObj.Top = y - 2; btnBrowseObj.Width = 100; Controls.Add(btnBrowseObj);
             y += 40;
 
+            //[09/14/2025]:Raksha- 3DR IGES folder
+            Controls.Add(new Label { Left = 12, Top = y + 4, Width = 120, Text = "3DR IGES folder:" });
+            txtIges.Left = 140; txtIges.Top = y; txtIges.Width = 540; Controls.Add(txtIges);
+            btnBrowseIges.Text = "Browse..."; btnBrowseIges.Left = 690; btnBrowseIges.Top = y - 2; btnBrowseIges.Width = 100; Controls.Add(btnBrowseIges);
+            y += 40;
+
+            // Button to run IGES export then import into Inventor
+            btnExportIgesToInventor.Text = "Export IGES → Inventor";
+            btnExportIgesToInventor.Left = 140; btnExportIgesToInventor.Top = y; btnExportIgesToInventor.Width = 200; Controls.Add(btnExportIgesToInventor);
+            y += 8; // small spacer
+
             btnViewInInventor.Text = "View in Inventor";
             btnViewInInventor.Left = 140; btnViewInInventor.Top = y; btnViewInInventor.Width = 200; Controls.Add(btnViewInInventor);
 
@@ -87,6 +103,8 @@ namespace PanelSync._3DRApp
             txtDxf.Text = _cfg.ThreeDRExportDxf;
             txtObj.Text = _cfg.InventorExportObj;
             txt3drPath.Text = _cfg.ThreeDRFilePath;
+            txtIges.Text = _cfg.ThreeDRExportIges;
+
         }
 
         private void SaveFields()
@@ -96,6 +114,8 @@ namespace PanelSync._3DRApp
             _cfg.ThreeDRExportDxf = txtDxf.Text.Trim();
             _cfg.InventorExportObj = txtObj.Text.Trim();
             _cfg.ThreeDRFilePath = txt3drPath.Text.Trim();
+            _cfg.ThreeDRExportIges = txtIges.Text.Trim(); //[09/14/2025]:Raksha- Save IGES path
+
             _cfg.Save();
         }
 
@@ -104,11 +124,106 @@ namespace PanelSync._3DRApp
             btnBrowseDxf.Click += (s, e) => ChooseFolder(txtDxf);
             btnBrowseObj.Click += (s, e) => ChooseFolder(txtObj);
             btnBrowse3dr.Click += (s, e) => ChooseFile(txt3drPath, "3dr files|*.3dr|All files|*.*");
+            btnBrowseIges.Click += (s, e) => ChooseFolder(txtIges);
+            btnExportIgesToInventor.Click += async (s, e) => await OnExportIgesToInventorAsync();
 
             btnViewInInventor.Click += async (s, e) => await OnViewInInventorAsync();
             btnStartObjWatch.Click += (s, e) => ToggleObjWatcher();
             FormClosing += (s, e) => { _objWatcher?.Dispose(); };
         }
+
+        //[09/14/2025]:Raksha- Resolve IGES exporter script
+        private string ResolveIgesScriptPath()
+        {
+            var baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            var p1 = Path.Combine(baseDir, "Scripts", "ExportGeometricGroupToIges.js");
+            if (File.Exists(p1)) return p1;
+            var p2 = Path.Combine(baseDir, "ExportGeometricGroupToIges.js");
+            if (File.Exists(p2)) return p2;
+            throw new FileNotFoundException("ExportGeometricGroupToIges.js not found", p1);
+        }
+
+
+        //[09/14/2025]:Raksha- End-to-end: export IGES then import into Inventor
+        private async Task OnExportIgesToInventorAsync()
+        {
+            Append("opening (IGES)....");
+            try
+            {
+                SaveFields();
+
+                if (string.IsNullOrWhiteSpace(txt3drPath.Text) || !File.Exists(txt3drPath.Text))
+                {
+                    MessageBox.Show("Pick your .3dr file first.");
+                    return;
+                }
+
+                var groupToExport = string.IsNullOrWhiteSpace(_cfg.Zone) ? "Geometric Group" : _cfg.Zone;
+                var tmpOut = Path.Combine(Path.GetTempPath(), $"ps_{Guid.NewGuid():N}.igs");
+
+                byte[] igesBytes;
+                try
+                {
+                    igesBytes = await ExportIgesFrom3DRAsync(_cfg.ThreeDRFilePath, groupToExport, tmpOut);
+                    Append("Real 3DR IGES export succeeded.");
+                    _log.Info("//[09/14/2025]:Raksha- Real 3DR IGES export succeeded");
+                }
+                catch (Exception ex)
+                {
+                    _log.Error("//[09/14/2025]:Raksha- IGES export failed", ex);
+                    MessageBox.Show("IGES export failed. See log for details.");
+                    return;
+                }
+
+                var guard = new GuardService(_log);
+                var exporter = new ExportService(_log, guard);
+                var exportRoot3dr = Path.GetFullPath(Path.Combine(_cfg.ThreeDRExportIges, "..", "..")); // ...\3DR\exports\iges → root
+                var igesPath = exporter.SaveRefIges(exportRoot3dr, _cfg.ProjectId, _cfg.Zone, igesBytes);
+                Append("Wrote IGES -> " + igesPath);
+
+                // Target IPT (same base as .3dr)
+                var desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+                var hotRoot = Path.Combine(desktop, "PanelSyncHot");
+                var projectsDir = Path.Combine(hotRoot, "Inventor", "Projects");
+                Directory.CreateDirectory(projectsDir);
+                var baseName = Path.GetFileNameWithoutExtension(txt3drPath.Text);
+                var targetIpt = Path.Combine(projectsDir, baseName + ".ipt");
+
+                QueueInventorJob_OpenOrCreateAndImportIGES(targetIpt, igesPath, bringToFront: true);
+                Append($"Queued Inventor job for [{baseName}]: open/create IPT and import latest IGES.");
+            }
+            catch (Exception ex)
+            {
+                _log.Error("//[09/14/2025]:Raksha- ExportIgesToInventor failed", ex);
+                Append("ERROR: " + ex.Message);
+            }
+            await Task.CompletedTask;
+        }
+
+        //[09/14/2025]:Raksha- Queue IGES import job
+        //[09/14/2025]:Raksha- Queue IGES import job
+        private void QueueInventorJob_OpenOrCreateAndImportIGES(string iptPath, string igesPath, bool bringToFront)
+        {
+            var desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+            var jobsDir = Path.Combine(desktop, "PanelSyncHot", "Jobs");
+            Directory.CreateDirectory(jobsDir);
+
+            var job = new
+            {
+                Kind = "OpenOrCreateAndImportIGES",
+                IptPath = iptPath,
+                IgesPath = igesPath,
+                BringToFront = bringToFront,
+                ProjectId = _cfg.ProjectId,
+                Zone = _cfg.Zone,
+                CreatedUtc = DateTime.UtcNow.ToString("o")
+            };
+
+            var json = JsonSerializer.Serialize(job, new JsonSerializerOptions { WriteIndented = true });
+            var jobPath = Path.Combine(jobsDir, $"job_{DateTime.UtcNow:yyyyMMddTHHmmssfffZ}_{Path.GetFileNameWithoutExtension(iptPath)}.json");
+            AtomicWriter.WriteAllText(jobPath, json);
+        }
+
 
         private void ChooseFolder(TextBox box)
         {
@@ -277,6 +392,7 @@ namespace PanelSync._3DRApp
 
             //[09/09/2025]:Raksha- size/tail debug (optional)
             Append($"//[09/09/2025]:Raksha- DXF size={new FileInfo(dxfOutPath).Length} bytes");
+
             //[09/08/2025]:Raksha- sanity: DXF should end with EOF (exporter fully flushed)
             if (!DxfHasEof(dxfOutPath))
             {
@@ -315,7 +431,7 @@ namespace PanelSync._3DRApp
                     var tmpOut = Path.Combine(Path.GetTempPath(), $"ps_{Guid.NewGuid():N}.dxf");
                     var groupToExport = string.IsNullOrWhiteSpace(zone) ? "Geometric Group" : zone;
 
-                    dxfBytes = await ExportDxfFrom3DRAsync(_cfg.ThreeDRFilePath, groupToExport, tmpOut);
+                    dxfBytes = await ExportIgesFrom3DRAsync(_cfg.ThreeDRFilePath, groupToExport, tmpOut);
                     Append("Real 3DR export succeeded.");
                     _log.Info("//[09/02/2025]:Raksha- Real 3DR export succeeded");
                 }
@@ -543,6 +659,115 @@ namespace PanelSync._3DRApp
             {
                 return (false, "exception: " + ex.Message);
             }
+        }
+        //[09/14/2025]:Raksha- Minimal IGES sanity (sections S/G/D/P/T + size)
+        private static async Task<(bool ok, string why)> IgesSoftValidateAsync(string path, CancellationToken ct = default)
+        {
+            try
+            {
+                var len = new FileInfo(path).Length;
+                if (len < 512) return (false, "too small");
+
+                string text;
+                using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                using (var sr = new StreamReader(fs, System.Text.Encoding.ASCII, detectEncodingFromByteOrderMarks: true))
+                    text = await sr.ReadToEndAsync();
+
+                var t = text.ToUpperInvariant();
+                // IGES has S/G/D/P/T records; cheap scan is fine for triage
+                bool hasS = t.Contains("\nS") || t.StartsWith("S");
+                bool hasG = t.Contains("\nG");
+                bool hasD = t.Contains("\nD");
+                bool hasP = t.Contains("\nP");
+                bool hasT = t.Contains("\nT");
+                if (!(hasS && hasG && hasD && hasP && hasT)) return (false, "missing IGES section tags");
+                return (true, "ok");
+            }
+            catch (Exception ex) { return (false, "exception: " + ex.Message); }
+        }
+
+        //[09/14/2025]:Raksha- Launch 3DR with IGES script and return .igs bytes
+        private async Task<byte[]> ExportIgesFrom3DRAsync(string threeDrPath, string groupName, string igesOutPath)
+        {
+            Append("threeDrPath=" + threeDrPath);
+            Append("groupName=" + groupName);
+            Append("igesOutPath=" + igesOutPath);
+
+            var exe = Get3DRExePath();
+            EnsureFile(exe, "3DR.exe");
+
+            var scriptPath = ResolveIgesScriptPath();
+            EnsureFile(scriptPath, "3DR IGES script");
+            EnsureFile(threeDrPath, ".3dr project");
+            Directory.CreateDirectory(Path.GetDirectoryName(igesOutPath)!);
+            Append("scriptPath(iges)=" + scriptPath);
+
+            // Reuse Run3DRAsync with a different --ScriptParam
+            string js = scriptPath.Replace("\\", "/");
+            string proj = threeDrPath.Replace("\\", "/");
+            string outp = igesOutPath.Replace("\\", "/");
+            string grp = string.IsNullOrWhiteSpace(groupName) ? "/Geometric Group" : (groupName.StartsWith("/") ? groupName : "/" + groupName);
+            string log = Path.Combine(Path.GetTempPath(), $"3dr_{Guid.NewGuid():N}.log").Replace("\\", "/");
+
+            string args =
+                $"--Script=\"{js}\" " +
+                $"--ScriptOutput=\"{log}\" " +
+                $"--Silent " +
+                $"--ScriptAutorun " +
+                $"--ScriptParam=\"project='{proj}'; out='{outp}'; groupPath='{grp}';\"";
+
+            Append("//[09/14/2025]:Raksha- RUN 3DR (IGES) => " + args);
+
+            var psi = new ProcessStartInfo(exe, args)
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                WorkingDirectory = Path.GetDirectoryName(exe) ?? Environment.CurrentDirectory
+            };
+
+            using var p = Process.Start(psi)!;
+            var soTask = p.StandardOutput.ReadToEndAsync();
+            var seTask = p.StandardError.ReadToEndAsync();
+
+            var started = DateTime.UtcNow;
+            while (!p.HasExited)
+            {
+                if (File.Exists(igesOutPath))
+                {
+                    var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+                    var stable = await FileStability.WaitUntilStableAsync(igesOutPath, TimeSpan.FromSeconds(1), TimeSpan.FromMilliseconds(200), cts.Token);
+                    if (stable) break;
+                }
+                if (DateTime.UtcNow - started > TimeSpan.FromMinutes(2)) { try { p.Kill(entireProcessTree: true); } catch { } break; }
+                await Task.Delay(250);
+            }
+
+            var so = await soTask;
+            var se = await seTask;
+
+            try
+            {
+                if (File.Exists(log))
+                {
+                    var console = await File.ReadAllTextAsync(log);
+                    Append("//[09/14/2025]:Raksha- 3DR IGES script console:\n" + console);
+                }
+            }
+            catch { }
+
+            if (!File.Exists(igesOutPath))
+                throw new Exception("3DR IGES export failed (no .igs produced).");
+
+            var cts2 = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+            var ok = await FileStability.WaitUntilStableAsync(igesOutPath, TimeSpan.FromSeconds(1), TimeSpan.FromMilliseconds(250), cts2.Token);
+            if (!ok) throw new IOException("IGES not stable at: " + igesOutPath);
+
+            var (ok2, why2) = await IgesSoftValidateAsync(igesOutPath);
+            if (!ok2) Append("//[09/14/2025]:Raksha- IGES soft-validate: " + why2);
+
+            return await File.ReadAllBytesAsync(igesOutPath);
         }
 
     }

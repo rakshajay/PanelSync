@@ -18,6 +18,15 @@ namespace PanelSync.Core.Naming
                 utc.ToString("yyyyMMddTHHmmssZ"));
         }
 
+        //[09/14/2025]:Raksha- IGES naming like PROJ_ZONE_YYYYMMDDTHHMMSSZ.igs
+        public static string BuildRefIgesName(string projectId, string zone, DateTime utc)
+        {
+            return string.Format("{0}_{1}_{2}.igs",
+                projectId,
+                zone,
+                utc.ToString("yyyyMMddTHHmmssZ"));
+        }
+
         public static string BuildPanelModelName(Guid projectId, string panelId, string rev, string ext, DateTime utc)
         {
             // ex: <proj>_<panel>_r<rev>_<ts>.<ext>

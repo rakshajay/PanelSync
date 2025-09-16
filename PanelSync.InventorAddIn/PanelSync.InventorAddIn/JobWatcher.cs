@@ -1,167 +1,132 @@
-﻿//[08/28/2025]:Raksha- Watches PanelSyncHot/Jobs for JSON jobs and executes them.
+﻿//[09/15/2025]:Raksha- Simplified JobWatcher (IGES-only)
+using Inventor;
+using Newtonsoft.Json;
 using System;
 using System.IO;
-using System.Text;
-using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
-using Inventor;
-//[08/28/2025]:Raksha- Disambiguate System types
+using static System.Net.WebRequestMethods;
 using SysEnv = System.Environment;
 using IOPath = System.IO.Path;
 using IOFile = System.IO.File;
+using PanelSync.Core.Logging;
 
-namespace PanelSync.InventorAddin
+
+namespace PanelSync.InventorAddIn
 {
-    internal sealed class JobWatcher : IDisposable
+    internal class JobWatcher : IDisposable
     {
         private readonly Application _inv;
-        private readonly FileSystemWatcher _fsw;
-        private readonly SimpleFileLogger _log;
+        private readonly ILog _log;
+        private readonly FileSystemWatcher _watcher;
 
-        public JobWatcher(Application inv, string jobsDir, SimpleFileLogger log)
+        public JobWatcher(Application inv, ILog log, string folder)
         {
             _inv = inv;
             _log = log;
 
-            _fsw = new FileSystemWatcher(jobsDir, "job_*.json");
-            _fsw.IncludeSubdirectories = false;
-            _fsw.EnableRaisingEvents = true;
-            _fsw.NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size;
-            _fsw.Created += async (s, e) => await OnNewJobAsync(e.FullPath);
-            _fsw.Changed += async (s, e) => await OnNewJobAsync(e.FullPath);
+            _watcher = new FileSystemWatcher(folder, "*.json");
+            _watcher.IncludeSubdirectories = false;
+            _watcher.NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite;
+
+            _watcher.Created += OnCreated;
+            _watcher.Changed += OnCreated;
+            _watcher.Renamed += OnCreated;
+
+            _watcher.EnableRaisingEvents = true;
+
+            _log.Info("//[09/15/2025]:Raksha- JobWatcher watching folder: " + folder);
         }
 
-        public void Dispose() { if (_fsw != null) _fsw.Dispose(); }
-
-        private async Task OnNewJobAsync(string jobPath)
+        private void OnCreated(object sender, FileSystemEventArgs e)
         {
+            _log.Info("// OnCreated fired: " + e.FullPath + " (ChangeType=" + e.ChangeType + ")");
+            _log.Info("// Event fired: " + e.ChangeType + " for " + e.FullPath);
+            ThreadPool.QueueUserWorkItem(_ => ProcessJobFile(e.FullPath));
+        }
+
+        private void ProcessJobFile(string path)
+        {
+            _log.Info("1");
             try
             {
-                if (!FileStability.WaitUntilStableAsync(jobPath, 600, 150, 8000).GetAwaiter().GetResult())
-                    return;
+                _log.Info("//[09/15/2025]:Raksha- Processing job: " + path);
+                string json = System.IO.File.ReadAllText(path);
+                var job = JsonConvert.DeserializeObject<OpenOrCreateAndImportJob>(json);
 
-                var json = IOFile.ReadAllText(jobPath, Encoding.UTF8);
-                var job = OpenOrCreateAndImportJob.Parse(json);
-                if (job == null || !job.IsValid) { _log.Warn("//[08/28/2025]:Raksha- Invalid job: " + jobPath); return; }
+                if (job == null || !job.IsValid)
+                {
+                    _log.Warn("//[09/15/2025]:Raksha- Invalid job file: " + path);
+                    return;
+                }
 
                 ExecuteOpenCreateImport(job);
-                IOFile.Delete(jobPath);
+                System.IO.File.Delete(path);
             }
             catch (Exception ex)
             {
-                _log.Error("//[08/28/2025]:Raksha- Job error: " + ex.Message);
+                _log.Error("//[09/15/2025]:Raksha- Error processing job " + path + ": " + ex);
             }
         }
 
         private void ExecuteOpenCreateImport(OpenOrCreateAndImportJob job)
         {
-            var doc = OpenOrCreateIpt(job.IptPath);
+            if (job.Kind != "OpenOrCreateAndImportIGES") return;
 
-            if (!FileStability.WaitUntilStableAsync(job.DxfPath, 600, 150, 8000).GetAwaiter().GetResult())
-            { _log.Warn("//[08/28/2025]:Raksha- DXF not stable: " + job.DxfPath); return; }
+            // open or create target IPT
+            PartDocument doc = null;
+            foreach (Document d in _inv.Documents)
+            {
+                if (string.Equals(d.FullFileName, job.IptPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    doc = (PartDocument)d;
+                    break;
+                }
+            }
+            if (doc == null)
+            {
+                doc = (PartDocument)_inv.Documents.Add(DocumentTypeEnum.kPartDocumentObject,
+                                                       _inv.FileManager.GetTemplateFile(DocumentTypeEnum.kPartDocumentObject));
+                doc.SaveAs(job.IptPath, false);
+            }
 
-            ImportDxfIntoPart((PartDocument)doc, job.DxfPath);
+            var compDef = doc.ComponentDefinition;
+            var importedDef = compDef.ReferenceComponents.ImportedComponents.CreateDefinition(job.IgesPath);
+
+            // True = associative link (updates if IGES changes), False = convert once
+            //importedDef.ReferenceModel = false;
+            //importedDef.IncludeAll();
+
+            compDef.ReferenceComponents.ImportedComponents.Add(importedDef);
 
             doc.Save();
             if (job.BringToFront) { doc.Activate(); _inv.ActiveView.Update(); }
-            _log.Info("//[08/28/2025]:Raksha- Imported DXF into " + job.IptPath);
+
+            _log.Info("// Imported IGES into " + job.IptPath);
         }
 
-        private Document OpenOrCreateIpt(string iptPath)
+        public void Dispose()
         {
-            foreach (Document d in _inv.Documents)
-                if (string.Equals(d.FullFileName, iptPath, StringComparison.OrdinalIgnoreCase))
-                    return d;
-
-            if (IOFile.Exists(iptPath))
-                return _inv.Documents.Open(iptPath, true);
-
-            var part = (PartDocument)_inv.Documents.Add(
-                DocumentTypeEnum.kPartDocumentObject,
-                _inv.FileManager.GetTemplateFile(DocumentTypeEnum.kPartDocumentObject), true);
-
-            var dir = IOPath.GetDirectoryName(iptPath);
-            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-
-            part.SaveAs(iptPath, false);
-            return (Document)part;  // explicit cast fixes CS0266
-        }
-
-        private void ImportDxfIntoPart(PartDocument part, string dxfPath)
-        {
-            TranslatorAddIn dxfAddin = null;
-            foreach (ApplicationAddIn addin in _inv.ApplicationAddIns)
+            _log.Info("3");
+            if (_watcher != null)
             {
-                var name = (addin.DisplayName ?? "").ToLowerInvariant();
-                if (name.Contains("dxf")) { dxfAddin = addin as TranslatorAddIn; break; }
+                _watcher.EnableRaisingEvents = false;
+                _watcher.Dispose();
             }
-            if (dxfAddin == null) { _log.Warn("//[08/28/2025]:Raksha- DXF Translator not found."); return; }
-
-            var ctx = _inv.TransientObjects.CreateTranslationContext();
-            ctx.Type = IOMechanismEnum.kFileBrowseIOMechanism;
-
-            var options = _inv.TransientObjects.CreateNameValueMap();
-            options.Add("ImportIntoSketch", true);
-            options.Add("AutoScale", true);
-            options.Add("ApplyConstraints", false);
-            options.Add("ConstrainEndPoints", false);
-
-            var data = _inv.TransientObjects.CreateDataMedium();
-            data.FileName = dxfPath;
-
-            object target = (object)part;
-            dxfAddin.Open(data, ctx, options, out target);
         }
     }
 
-    internal sealed class OpenOrCreateAndImportJob
+    internal class OpenOrCreateAndImportJob
     {
-        public string Kind = "";
-        public string IptPath = "";
-        public string DxfPath = "";
-        public bool BringToFront = true;
+        public string Kind { get; set; }
+        public string IptPath { get; set; }
+        public string IgesPath { get; set; }
+        public bool BringToFront { get; set; } = true;
 
-        public bool IsValid
-        {
-            get
-            {
-                return Kind == "OpenOrCreateAndImportDXF"
-                    && !string.IsNullOrWhiteSpace(IptPath)
-                    && !string.IsNullOrWhiteSpace(DxfPath);
-            }
-        }
-
-        public static OpenOrCreateAndImportJob Parse(string json)
-        {
-            Func<string, string> Take = key =>
-                Regex.Match(json, "\"" + key + "\"\\s*:\\s*\"([^\"]+)\"").Groups[1].Value;
-
-            var job = new OpenOrCreateAndImportJob();
-            job.Kind = Take("Kind");
-            job.IptPath = Take("IptPath");
-            job.DxfPath = Take("DxfPath");
-            job.BringToFront = Regex.IsMatch(json, "\"BringToFront\"\\s*:\\s*true", RegexOptions.IgnoreCase);
-            return job;
-        }
-    }
-
-    internal sealed class SimpleFileLogger
-    {
-        private readonly string _path;
-        public SimpleFileLogger(string path) { _path = path; }
-        public void Info(string m) { Write("INFO", m); }
-        public void Warn(string m) { Write("WARN", m); }
-        public void Error(string m) { Write("ERROR", m); }
-        private void Write(string level, string msg)
-        {
-            try
-            {
-                var dir = IOPath.GetDirectoryName(_path);
-                if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-                IOFile.AppendAllText(_path, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " " + level + " " + msg + "\r\n", Encoding.UTF8);
-            }
-            catch { }
-        }
+        public bool IsValid =>
+            Kind == "OpenOrCreateAndImportIGES"
+            && !string.IsNullOrWhiteSpace(IptPath)
+            && !string.IsNullOrWhiteSpace(IgesPath);
     }
 
     internal static class FileStability
