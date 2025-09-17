@@ -159,7 +159,8 @@ namespace PanelSync._3DRApp
                 }
 
                 var groupToExport = string.IsNullOrWhiteSpace(_cfg.Zone) ? "Geometric Group" : _cfg.Zone;
-                var tmpOut = Path.Combine(Path.GetTempPath(), $"ps_{Guid.NewGuid():N}.igs");
+                var baseName = Path.GetFileNameWithoutExtension(txt3drPath.Text);
+                var tmpOut = Path.Combine(Path.GetTempPath(), $"{baseName}.igs");
 
                 byte[] igesBytes;
                 try
@@ -178,7 +179,9 @@ namespace PanelSync._3DRApp
                 var guard = new GuardService(_log);
                 var exporter = new ExportService(_log, guard);
                 var exportRoot3dr = Path.GetFullPath(Path.Combine(_cfg.ThreeDRExportIges, "..", "..")); // ...\3DR\exports\iges → root
-                var igesPath = exporter.SaveRefIges(exportRoot3dr, _cfg.ProjectId, _cfg.Zone, igesBytes);
+                var igesPath = Path.Combine(_cfg.ThreeDRExportIges, $"{baseName}.igs");
+                // Save file directly
+                await File.WriteAllBytesAsync(igesPath, igesBytes);
                 Append("Wrote IGES -> " + igesPath);
 
                 // Target IPT (same base as .3dr)
@@ -186,11 +189,10 @@ namespace PanelSync._3DRApp
                 var hotRoot = Path.Combine(desktop, "PanelSyncHot");
                 var projectsDir = Path.Combine(hotRoot, "Inventor", "Projects");
                 Directory.CreateDirectory(projectsDir);
-                var baseName = Path.GetFileNameWithoutExtension(txt3drPath.Text);
                 var targetIpt = Path.Combine(projectsDir, baseName + ".ipt");
 
                 QueueInventorJob_OpenOrCreateAndImportIGES(targetIpt, igesPath, bringToFront: true);
-                Append($"Queued Inventor job for [{baseName}]: open/create IPT and import latest IGES.");
+                Append($"Queued Inventor job for [{baseName}]: If Inventor is not open, please open it to process this job");
             }
             catch (Exception ex)
             {

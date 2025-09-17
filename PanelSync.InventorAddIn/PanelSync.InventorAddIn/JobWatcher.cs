@@ -73,37 +73,79 @@ namespace PanelSync.InventorAddIn
         {
             if (job.Kind != "OpenOrCreateAndImportIGES") return;
 
-            // open or create target IPT
             PartDocument doc = null;
+
+            // 🔎 Check if the specific file is already open
             foreach (Document d in _inv.Documents)
             {
                 if (string.Equals(d.FullFileName, job.IptPath, StringComparison.OrdinalIgnoreCase))
                 {
                     doc = (PartDocument)d;
+                    _log.Info("//[09/16/2025]:Raksha- Reusing already open IPT -> " + job.IptPath);
                     break;
                 }
             }
+
+            // 📂 If not open, then open from disk or create new
             if (doc == null)
             {
-                doc = (PartDocument)_inv.Documents.Add(DocumentTypeEnum.kPartDocumentObject,
-                                                       _inv.FileManager.GetTemplateFile(DocumentTypeEnum.kPartDocumentObject));
-                doc.SaveAs(job.IptPath, false);
+                if (System.IO.File.Exists(job.IptPath))
+                {
+                    _log.Info("//[09/16/2025]:Raksha- Opening IPT from disk -> " + job.IptPath);
+                    doc = (PartDocument)_inv.Documents.Open(job.IptPath, true);
+                }
+                else
+                {
+                    _log.Info("//[09/16/2025]:Raksha- Creating new IPT -> " + job.IptPath);
+                    doc = (PartDocument)_inv.Documents.Add(
+                        DocumentTypeEnum.kPartDocumentObject,
+                        _inv.FileManager.GetTemplateFile(DocumentTypeEnum.kPartDocumentObject), true);
+                    doc.SaveAs(job.IptPath, false);
+                }
             }
 
+            // 🧹 Remove any old IGES imports for a clean refresh
+            // 🧹 Remove an old IGES import if it points to the same file
             var compDef = doc.ComponentDefinition;
+            foreach (ImportedComponent ic in compDef.ReferenceComponents.ImportedComponents)
+            {
+                try
+                {
+                    var def = ic.Definition as ImportedComponentDefinition;
+                    if (def == null) continue;
+
+                    // Safely get the path (different Inventor builds expose different props)
+                    string srcPath = null;
+                    try { srcPath = def.FullFileName; } catch { }
+
+                    if (!string.IsNullOrWhiteSpace(srcPath))
+                    {
+                        var srcName = System.IO.Path.GetFileName(srcPath);
+                        var newName = System.IO.Path.GetFileName(job.IgesPath);
+
+                        if (string.Equals(srcName, newName, StringComparison.OrdinalIgnoreCase))
+                        {
+                            ic.Delete();
+                            _log.Info("//[09/16/2025]:Raksha- Removed old IGES import (matched by filename) -> " + srcName);
+                        }
+                    }
+                }
+                catch { }
+            }
+
+            // ➕ Add the new IGES import
             var importedDef = compDef.ReferenceComponents.ImportedComponents.CreateDefinition(job.IgesPath);
-
-            // True = associative link (updates if IGES changes), False = convert once
-            //importedDef.ReferenceModel = false;
-            //importedDef.IncludeAll();
-
             compDef.ReferenceComponents.ImportedComponents.Add(importedDef);
 
             doc.Save();
-            if (job.BringToFront) { doc.Activate(); _inv.ActiveView.Update(); }
 
-            _log.Info("// Imported IGES into " + job.IptPath);
+            // 👁️ Always bring the target doc to front after import
+            doc.Activate();
+            _inv.ActiveView.Update();
+
+            _log.Info("//[09/16/2025]:Raksha- Imported IGES into " + job.IptPath);
         }
+
 
         public void Dispose()
         {
