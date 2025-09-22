@@ -5,7 +5,17 @@
 		<UseWindowsForms>true</UseWindowsForms>
 		<Nullable>enable</Nullable>
 		<Platforms>AnyCPU;x64</Platforms>
+		<ApplicationIcon>Resources\icons.ico</ApplicationIcon>
 	</PropertyGroup>
+	<ItemGroup>
+		<None Remove="ImportObjTo3dr.js" />
+		<None Remove="Resources\icons.ico" />
+	</ItemGroup>
+	<ItemGroup>
+		<Content Include="Resources\icons.ico">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+	</ItemGroup>
 
 	<ItemGroup>
 		<!-- add reference to your Core project -->

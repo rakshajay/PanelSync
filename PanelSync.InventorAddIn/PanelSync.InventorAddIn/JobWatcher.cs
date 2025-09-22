@@ -1,16 +1,14 @@
-﻿//[09/15/2025]:Raksha- Simplified JobWatcher (IGES-only)
+﻿//[09/15/2025]:Raksha- JobWatcher (IGES + OBJ support)
 using Inventor;
 using Newtonsoft.Json;
 using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
-using static System.Net.WebRequestMethods;
 using SysEnv = System.Environment;
 using IOPath = System.IO.Path;
 using IOFile = System.IO.File;
 using PanelSync.Core.Logging;
-
 
 namespace PanelSync.InventorAddIn
 {
@@ -34,6 +32,10 @@ namespace PanelSync.InventorAddIn
             _watcher.Renamed += OnCreated;
 
             _watcher.EnableRaisingEvents = true;
+            //foreach (ApplicationAddIn addin in _inv.ApplicationAddIns)
+            //{
+            //    _log.Info($"AddIn: {addin.DisplayName} [{addin.ClassIdString}]");
+            //}
 
             _log.Info("//[09/15/2025]:Raksha- JobWatcher watching folder: " + folder);
         }
@@ -41,26 +43,47 @@ namespace PanelSync.InventorAddIn
         private void OnCreated(object sender, FileSystemEventArgs e)
         {
             _log.Info("// OnCreated fired: " + e.FullPath + " (ChangeType=" + e.ChangeType + ")");
-            _log.Info("// Event fired: " + e.ChangeType + " for " + e.FullPath);
             ThreadPool.QueueUserWorkItem(_ => ProcessJobFile(e.FullPath));
         }
 
         private void ProcessJobFile(string path)
         {
-            _log.Info("1");
             try
             {
                 _log.Info("//[09/15/2025]:Raksha- Processing job: " + path);
                 string json = System.IO.File.ReadAllText(path);
-                var job = JsonConvert.DeserializeObject<OpenOrCreateAndImportJob>(json);
 
-                if (job == null || !job.IsValid)
+                // Peek job kind
+                var kindOnly = JsonConvert.DeserializeObject<dynamic>(json);
+                string kind = kindOnly?.Kind;
+
+                if (string.IsNullOrWhiteSpace(kind))
                 {
-                    _log.Warn("//[09/15/2025]:Raksha- Invalid job file: " + path);
+                    _log.Warn("//[09/17/2025]:Raksha- Job missing Kind: " + path);
                     return;
                 }
 
-                ExecuteOpenCreateImport(job);
+                if (kind == "OpenOrCreateAndImportIGES")
+                {
+                    var job = JsonConvert.DeserializeObject<OpenOrCreateAndImportJob>(json);
+                    if (job != null && job.IsValid)
+                        ExecuteOpenCreateImport(job);
+                    else
+                        _log.Warn("//[09/15/2025]:Raksha- Invalid IGES job: " + path);
+                }
+                else if (kind == "ExportPanelAsOBJ")
+                {
+                    var job = JsonConvert.DeserializeObject<ExportPanelAsObjJob>(json);
+                    if (job != null && job.IsValid)
+                        ExecuteExportPanelAsObj(job);
+                    else
+                        _log.Warn("//[09/17/2025]:Raksha- Invalid OBJ job: " + path);
+                }
+                else
+                {
+                    _log.Warn("//[09/17/2025]:Raksha- Unknown job kind: " + kind);
+                }
+
                 System.IO.File.Delete(path);
             }
             catch (Exception ex)
@@ -69,93 +92,131 @@ namespace PanelSync.InventorAddIn
             }
         }
 
+        // === IGES Import ===
         private void ExecuteOpenCreateImport(OpenOrCreateAndImportJob job)
         {
             if (job.Kind != "OpenOrCreateAndImportIGES") return;
 
             PartDocument doc = null;
-
-            // 🔎 Check if the specific file is already open
             foreach (Document d in _inv.Documents)
             {
                 if (string.Equals(d.FullFileName, job.IptPath, StringComparison.OrdinalIgnoreCase))
                 {
                     doc = (PartDocument)d;
-                    _log.Info("//[09/16/2025]:Raksha- Reusing already open IPT -> " + job.IptPath);
                     break;
                 }
             }
-
-            // 📂 If not open, then open from disk or create new
             if (doc == null)
             {
-                if (System.IO.File.Exists(job.IptPath))
-                {
-                    _log.Info("//[09/16/2025]:Raksha- Opening IPT from disk -> " + job.IptPath);
-                    doc = (PartDocument)_inv.Documents.Open(job.IptPath, true);
-                }
-                else
-                {
-                    _log.Info("//[09/16/2025]:Raksha- Creating new IPT -> " + job.IptPath);
-                    doc = (PartDocument)_inv.Documents.Add(
-                        DocumentTypeEnum.kPartDocumentObject,
-                        _inv.FileManager.GetTemplateFile(DocumentTypeEnum.kPartDocumentObject), true);
-                    doc.SaveAs(job.IptPath, false);
-                }
+                doc = (PartDocument)_inv.Documents.Add(DocumentTypeEnum.kPartDocumentObject,
+                                                       _inv.FileManager.GetTemplateFile(DocumentTypeEnum.kPartDocumentObject));
+                doc.SaveAs(job.IptPath, false);
             }
 
-            // 🧹 Remove any old IGES imports for a clean refresh
-            // 🧹 Remove an old IGES import if it points to the same file
             var compDef = doc.ComponentDefinition;
-            foreach (ImportedComponent ic in compDef.ReferenceComponents.ImportedComponents)
-            {
-                try
-                {
-                    var def = ic.Definition as ImportedComponentDefinition;
-                    if (def == null) continue;
-
-                    // Safely get the path (different Inventor builds expose different props)
-                    string srcPath = null;
-                    try { srcPath = def.FullFileName; } catch { }
-
-                    if (!string.IsNullOrWhiteSpace(srcPath))
-                    {
-                        var srcName = System.IO.Path.GetFileName(srcPath);
-                        var newName = System.IO.Path.GetFileName(job.IgesPath);
-
-                        if (string.Equals(srcName, newName, StringComparison.OrdinalIgnoreCase))
-                        {
-                            ic.Delete();
-                            _log.Info("//[09/16/2025]:Raksha- Removed old IGES import (matched by filename) -> " + srcName);
-                        }
-                    }
-                }
-                catch { }
-            }
-
-            // ➕ Add the new IGES import
             var importedDef = compDef.ReferenceComponents.ImportedComponents.CreateDefinition(job.IgesPath);
+            //[09/22/2025]:Raksha- Force import as millimeters
+            //importedDef.ReferenceModel = true;
+            // Units are handled on the Document itself:
+            doc.UnitsOfMeasure.LengthUnits = UnitsTypeEnum.kMillimeterLengthUnits;
             compDef.ReferenceComponents.ImportedComponents.Add(importedDef);
 
+
             doc.Save();
+            if (job.BringToFront) { doc.Activate(); _inv.ActiveView.Update(); }
 
-            // 👁️ Always bring the target doc to front after import
-            doc.Activate();
-            _inv.ActiveView.Update();
-
-            _log.Info("//[09/16/2025]:Raksha- Imported IGES into " + job.IptPath);
+            _log.Info("//[09/15/2025]:Raksha- Imported IGES into " + job.IptPath);
         }
 
+        // === OBJ Export ===
+        private void ExecuteExportPanelAsObj(ExportPanelAsObjJob job)
+        {
+            try
+            {
+                PartDocument doc = null;
+                foreach (Document d in _inv.Documents)
+                {
+                    if (string.Equals(d.FullFileName, job.IptPath, StringComparison.OrdinalIgnoreCase))
+                    {
+                        doc = (PartDocument)d;
+                        break;
+                    }
+                }
+                if (doc == null)
+                {
+                    _log.Warn("//[09/17/2025]:Raksha- No open document found for OBJ export: " + job.IptPath);
+                    return;
+                }
+
+                var meta = new PanelSync.Core.Models.PanelMeta
+                {
+                    ProjectId = Guid.NewGuid().ToString("N"),
+                    PanelId = job.PanelId,
+                    Rev = job.Rev,
+                    ExportedAtUtc = DateTime.UtcNow,
+                    Source = new PanelSync.Core.Models.SourceInfo { App = "Inventor", Version = _inv.SoftwareVersion.DisplayVersion }
+                };
+
+                // Translator: OBJ export
+                var ctx = _inv.TransientObjects.CreateTranslationContext();
+                ctx.Type = IOMechanismEnum.kFileBrowseIOMechanism;
+
+                var data = _inv.TransientObjects.CreateDataMedium();
+                var outDir = job.OutFolder;
+                Directory.CreateDirectory(outDir);
+                // Unique name: base_panelid_rev_yyyymmddThhmmssZ.obj
+                var baseName = System.IO.Path.GetFileNameWithoutExtension(job.IptPath);
+                var objName = $"{baseName}_{job.PanelId}_r{job.Rev}_{DateTime.UtcNow:yyyyMMddTHHmmssZ}.obj";
+                var objPath = System.IO.Path.Combine(outDir, objName);
+                data.FileName = objPath;
+
+                var options = _inv.TransientObjects.CreateNameValueMap();
+                //[09/18/2025]:Raksha- Use OBJ Export Translator
+                var addin = _inv.ApplicationAddIns.ItemById["{F539FB09-FC01-4260-A429-1818B14D6BAC}"];
+                var trans = (TranslatorAddIn)addin;
+
+                if (trans.HasSaveCopyAsOptions[doc, ctx, options])
+                    trans.SaveCopyAs(doc, ctx, options, data);
+
+                // Save OBJ + sidecar meta
+                var guard = new PanelSync.Core.Services.GuardService(_log);
+                var exp = new PanelSync.Core.Services.ExportService(_log, guard);
+                var bytes = System.IO.File.ReadAllBytes(objPath);
+                exp.SavePanelModel(job.OutFolder, meta, bytes, "obj");
+
+                _log.Info("//[09/17/2025]:Raksha- Exported OBJ -> " + objPath);
+                if (job.BringToFront) { doc.Activate(); _inv.ActiveView.Update(); }
+            }
+            catch (Exception ex)
+            {
+                _log.Error("//[09/17/2025]:Raksha- ExportPanelAsOBJ failed", ex);
+            }
+        }
 
         public void Dispose()
         {
-            _log.Info("3");
             if (_watcher != null)
             {
                 _watcher.EnableRaisingEvents = false;
                 _watcher.Dispose();
             }
         }
+    }
+
+    // === Job DTOs ===
+    internal class ExportPanelAsObjJob
+    {
+        public string Kind { get; set; } = "ExportPanelAsOBJ";
+        public string IptPath { get; set; }
+        public string OutFolder { get; set; }
+        public string PanelId { get; set; } = "P001";
+        public string Rev { get; set; } = "A";
+        public bool BringToFront { get; set; } = true;
+
+        public bool IsValid =>
+            Kind == "ExportPanelAsOBJ"
+            && !string.IsNullOrWhiteSpace(IptPath)
+            && !string.IsNullOrWhiteSpace(OutFolder);
     }
 
     internal class OpenOrCreateAndImportJob

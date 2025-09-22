@@ -9,7 +9,7 @@ using PanelSync.Core.IO;
 
 namespace PanelSync.Core.Services
 {
-    //[08/27/2025]:Raksha- Picks latest stable DXF/OBJ by naming pattern.
+    //[08/27/2025]:Raksha- Picks latest stable IGS/OBJ by naming pattern.
     public class ImportService
     {
         private readonly ILog _log;
