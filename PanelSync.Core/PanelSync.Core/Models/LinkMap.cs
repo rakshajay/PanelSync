@@ -19,7 +19,6 @@
     }
     public sealed class NamingRules
     {
-        public string RefDxf { get; set; } = "{projectId}_{zone}_refs_{stamp}.dxf";
         public string PanelModel { get; set; } = "{projectId}_{panelId}_{rev}_{stamp}.{ext}";
         public string PanelMeta { get; set; } = "{projectId}_{panelId}_{rev}_{stamp}_meta.json";
     }

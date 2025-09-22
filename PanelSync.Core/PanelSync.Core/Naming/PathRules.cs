@@ -8,22 +8,11 @@ namespace PanelSync.Core.Naming
         //[08/26/2025]:Raksha- Build standard timestamp (local file system friendly).
         public static string StampNow() => DateTime.UtcNow.ToString("yyyyMMdd-HHmmss");
 
-        //[08/27/2025]:Raksha- Extra helpers to match ExportService usage
-        public static string BuildRefDxfName(string projectId, string zone, DateTime utc)
-        {
-            // ex: PROJ1_ZONEA_20250827T190500Z.dxf
-            return string.Format("{0}_{1}_{2}.dxf",
-                projectId,
-                zone,
-                utc.ToString("yyyyMMddTHHmmssZ"));
-        }
-
-        //[09/14/2025]:Raksha- IGES naming like PROJ_ZONE_YYYYMMDDTHHMMSSZ.igs
-        public static string BuildRefIgesName(string projectId, string zone, DateTime utc)
+        //[09/14/2025]:Raksha- IGES naming like PROJ_Group_YYYYMMDDTHHMMSSZ.igs
+        public static string BuildRefIgesName(string projectId, DateTime utc)
         {
             return string.Format("{0}_{1}_{2}.igs",
                 projectId,
-                zone,
                 utc.ToString("yyyyMMddTHHmmssZ"));
         }
 

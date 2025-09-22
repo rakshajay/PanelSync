@@ -9,7 +9,7 @@ using System.IO;
 
 namespace PanelSync.Core.Services
 {
-    //[08/27/2025]:Raksha- Writes DXF/OBJ+Meta with atomic replace.
+    //[08/27/2025]:Raksha- Writes IGS/OBJ+Meta with atomic replace.
     public class ExportService
     {
         private readonly ILog _log;
@@ -20,18 +20,6 @@ namespace PanelSync.Core.Services
             _log = log;
             _guard = guard;
         }
-
-        public string SaveRefDxf(string exportRoot, string projectId, string zone, byte[] dxfBytes)
-        {
-            var name = PathRules.BuildRefDxfName(projectId, zone, DateTime.UtcNow); // //[08/27/2025]:Raksha- naming
-            var outDir = Path.Combine(exportRoot, "exports", "dxf");               // keep simple folder
-            _guard.EnsureFolder(outDir);
-            var path = Path.Combine(outDir, name);
-            _log.Info("//[08/27/2025]:Raksha- Exporting ref DXF -> " + path);
-            AtomicWriter.WriteAllBytes(path, dxfBytes);                             // atomic write  :contentReference[oaicite:8]{index=8}
-            return path;
-        }
-
         public string SavePanelModel(string exportRoot, PanelMeta meta, byte[] modelBytes, string ext)
         {
             // Parse meta.ProjectId (string) to Guid for BuildPanelModelName
@@ -59,9 +47,9 @@ namespace PanelSync.Core.Services
         }
 
         //[09/14/2025]:Raksha- Save IGES into exports\iges (atomic)
-        public string SaveRefIges(string exportRoot, string projectId, string zone, byte[] igesBytes)
+        public string SaveRefIges(string exportRoot, string projectId, string Group, byte[] igesBytes)
         {
-            var name = PathRules.BuildRefIgesName(projectId, zone, DateTime.UtcNow);
+            var name = PathRules.BuildRefIgesName(projectId, DateTime.UtcNow);
             var outDir = Path.Combine(exportRoot, "exports", "iges");
             _guard.EnsureFolder(outDir);
             var path = Path.Combine(outDir, name);

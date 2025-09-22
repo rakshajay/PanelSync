@@ -7,8 +7,7 @@ namespace PanelSync._3DRApp
     internal sealed class AppConfig
     {
         public string ProjectId { get; set; } = Guid.NewGuid().ToString("N");
-        public string Zone { get; set; } = "ZONEA";
-        public string ThreeDRExportDxf { get; set; } = "";
+        public string Group { get; set; } = "Geometric Group";
         public string InventorExportObj { get; set; } = "";
         public string LogsRoot { get; set; } = "";
         public string ThreeDRFilePath { get; set; } = "";
@@ -26,13 +25,10 @@ namespace PanelSync._3DRApp
             try { if (File.Exists(ConfigPath)) return JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(ConfigPath)) ?? new AppConfig(); }
             catch { }
             var cfg = new AppConfig();
-            var (dxf, obj,igess, logs, _) = HotFolders.EnsureDefaults();
-            //[09/14/2025]:Raksha- Default IGES sibling of DXF: ...\3DR\exports\iges
-            var iges = Path.Combine(Path.GetDirectoryName(dxf)!, "iges");
+            var (obj,igess, logs, _) = HotFolders.EnsureDefaults();
+            var iges = cfg.ThreeDRExportIges;
             Directory.CreateDirectory(iges);
-            cfg.ThreeDRExportIges = iges;
 
-            cfg.ThreeDRExportDxf = dxf;
             cfg.InventorExportObj = obj;
             cfg.LogsRoot = logs;
             return cfg;
