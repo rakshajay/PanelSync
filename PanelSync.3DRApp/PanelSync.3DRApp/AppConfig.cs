@@ -11,6 +11,7 @@ namespace PanelSync._3DRApp
         public string InventorExportObj { get; set; } = "";
         public string LogsRoot { get; set; } = "";
         public string ThreeDRFilePath { get; set; } = "";
+        public string InventorProjects { get; set; } = "";
 
         //[09/14/2025]:Raksha- Added IGES path
         public string ThreeDRExportIges { get; set; } = "";
@@ -22,17 +23,36 @@ namespace PanelSync._3DRApp
 
         public static AppConfig Load()
         {
-            try { if (File.Exists(ConfigPath)) return JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(ConfigPath)) ?? new AppConfig(); }
-            catch { }
-            var cfg = new AppConfig();
-            var (obj,igess, logs, _) = HotFolders.EnsureDefaults();
-            var iges = cfg.ThreeDRExportIges;
-            Directory.CreateDirectory(iges);
+            try
+            {
+                if (File.Exists(ConfigPath))
+                {
+                    var cfg = JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(ConfigPath)) ?? new AppConfig();
+                    var (projDef, objDef, igesDef, logsDef, _) = HotFolders.EnsureDefaults();
 
-            cfg.InventorExportObj = obj;
-            cfg.LogsRoot = logs;
-            return cfg;
+                    if (string.IsNullOrWhiteSpace(cfg.InventorProjects)) cfg.InventorProjects = projDef;
+                    if (string.IsNullOrWhiteSpace(cfg.InventorExportObj)) cfg.InventorExportObj = objDef;
+                    if (string.IsNullOrWhiteSpace(cfg.ThreeDRExportIges)) cfg.ThreeDRExportIges = igesDef;
+                    if (string.IsNullOrWhiteSpace(cfg.LogsRoot)) cfg.LogsRoot = logsDef;
+
+                    Directory.CreateDirectory(cfg.InventorProjects);
+                    Directory.CreateDirectory(cfg.InventorExportObj);
+                    Directory.CreateDirectory(cfg.ThreeDRExportIges);
+                    Directory.CreateDirectory(cfg.LogsRoot);
+                    return cfg;
+                }
+            }
+            catch { /* fallback */ }
+
+            var fresh = new AppConfig();
+            var (proj, obj, iges, logs, _) = HotFolders.EnsureDefaults();
+            fresh.InventorProjects = proj;
+            fresh.InventorExportObj = obj;
+            fresh.ThreeDRExportIges = iges;
+            fresh.LogsRoot = logs;
+            return fresh;
         }
+
 
         public void Save()
         {

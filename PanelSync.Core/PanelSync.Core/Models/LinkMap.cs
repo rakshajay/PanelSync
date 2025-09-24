@@ -1,5 +1,6 @@
 ﻿namespace PanelSync.Core.Models
 {
+    //[09/14/2025]:Raksha- Configuration for LinkMap (paths, naming rules, axes).
     public sealed class LinkMap
     {
         public string ProjectId { get; set; } = "";

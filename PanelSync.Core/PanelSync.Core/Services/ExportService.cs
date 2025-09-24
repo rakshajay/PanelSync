@@ -31,7 +31,7 @@ namespace PanelSync.Core.Services
             _guard.EnsureFolder(outDir);
             var modelPath = Path.Combine(outDir, name);
 
-            _log.Info("//[08/27/2025]:Raksha- Exporting model -> " + modelPath);
+            _log.Info("Exporting model -> " + modelPath);
             AtomicWriter.WriteAllBytes(modelPath, modelBytes); // atomic write  :contentReference[oaicite:10]{index=10}
 
             // fill hash + meta path
@@ -53,7 +53,7 @@ namespace PanelSync.Core.Services
             var outDir = Path.Combine(exportRoot, "exports", "iges");
             _guard.EnsureFolder(outDir);
             var path = Path.Combine(outDir, name);
-            _log.Info("//[09/14/2025]:Raksha- Exporting ref IGES -> " + path);
+            _log.Info("Exporting ref IGES -> " + path);
             AtomicWriter.WriteAllBytes(path, igesBytes);
             return path;
         }

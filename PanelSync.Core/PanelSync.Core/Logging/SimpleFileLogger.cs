@@ -53,7 +53,7 @@ namespace PanelSync.Core.Logging
                     File.Move(_logPath, rolled);
                 }
             }
-            catch { /* //[08/27/2025]:Raksha- Logging must not crash. */ }
+            catch { /* Logging must not crash. */ }
         }
 
         public void Dispose() { _disposed = true; }

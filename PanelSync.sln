@@ -12,6 +12,18 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{8EC462FD-D22E-90A8-E5CE-7E832BA40C5D}"
 	ProjectSection(SolutionItems) = preProject
 		.gitignore = .gitignore
+		README.md = README.md
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Resources", "Resources", "{02EA681E-C7D8-13C7-8484-4AC65E1B71E8}"
+	ProjectSection(SolutionItems) = preProject
+		C:\Users\raksh\Downloads\AppForm.png = C:\Users\raksh\Downloads\AppForm.png
+		C:\Users\raksh\Downloads\Concept.png = C:\Users\raksh\Downloads\Concept.png
+		C:\Users\raksh\Downloads\FavScript.png = C:\Users\raksh\Downloads\FavScript.png
+		C:\Users\raksh\Downloads\FavScriptAdded.png = C:\Users\raksh\Downloads\FavScriptAdded.png
+		PanelSync.3DRApp\PanelSync.3DRApp\Resources\FolderStructure.png = PanelSync.3DRApp\PanelSync.3DRApp\Resources\FolderStructure.png
+		C:\Users\raksh\Downloads\IgesImport.png = C:\Users\raksh\Downloads\IgesImport.png
+		C:\Users\raksh\Downloads\ObjExport.png = C:\Users\raksh\Downloads\ObjExport.png
 	EndProjectSection
 EndProject
 Global

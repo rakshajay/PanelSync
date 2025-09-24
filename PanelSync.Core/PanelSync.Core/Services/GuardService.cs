@@ -14,7 +14,7 @@ namespace PanelSync.Core.Services
         {
             if (!Directory.Exists(path))
             {
-                _log.Info("//[08/27/2025]:Raksha- Creating folder -> " + path);
+                _log.Info("Creating folder -> " + path);
                 Directory.CreateDirectory(path);
             }
         }
@@ -22,7 +22,7 @@ namespace PanelSync.Core.Services
         public bool ProjectMatches(string expected, string incoming)
         {
             var ok = string.Equals(expected, incoming, StringComparison.OrdinalIgnoreCase);
-            if (!ok) _log.Warn("//[08/27/2025]:Raksha- ProjectId mismatch: " + incoming + " != " + expected);
+            if (!ok) _log.Warn("ProjectId mismatch: " + incoming + " != " + expected);
             return ok;
         }
     }
