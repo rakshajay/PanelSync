@@ -116,7 +116,7 @@ From now on:
 
 ---
 
-## 🖥️ Using the WinForms app
+## 🖥️ Using the PanelSync app
 
 >- ![App form main page](Resources/AppForm.png)
 
