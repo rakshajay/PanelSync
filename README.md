@@ -31,7 +31,7 @@ It uses a **hot‑folder** convention on your Desktop, an **Inventor add‑in** 
 
 > On some machines with OneDrive enabled, the path may be `C:\Users\<you>\OneDrive\Desktop\PanelSyncHot\…`
 
-- `![Image of PanelSync Folder](Resources/FolderStructure.png)
+- ![Image of PanelSync Folder](Resources/FolderStructure.png)
 
 ---
 
@@ -86,14 +86,14 @@ That’s it. Both directions are now one‑click (plus running the script in 3DR
 ```
 
 4. Start Inventor→ go to add-in manger → check if PanelSync is added
-- `![PanelSync added to Inventor addins](Resources/InvAddinCheck.png)
+- ![PanelSync added to Inventor addins](Resources/InvAddinCheck.png)
 
 ---
 ## 📜 Add `latest_obj.js` as a Favorite Script in 3DR
 
 This ensures the OBJ import script is always ready in 3DR — no browsing each time.
 
-- `![Steps to add Favorite script in 3DR](Resources/FavScript.png)
+- ![Steps to add Favorite script in 3DR](Resources/FavScript.png)
 
 1. Open **Cyclone 3DR**.  
 2. Go to **Home → Settings → Favorite Script**.  
@@ -108,7 +108,7 @@ This ensures the OBJ import script is always ready in 3DR — no browsing each t
 5. Select the file and click **OK**.  
    ✅ The favorite script is now saved.
 
->- `![Favorite script Added in 3DR](Resources/FavScriptAdded.png)
+>- ![Favorite script Added in 3DR](Resources/FavScriptAdded.png)
 
 From now on:
 - Every time you open 3DR, the favorite is already loaded.  
@@ -118,7 +118,7 @@ From now on:
 
 ## 🖥️ Using the WinForms app
 
->- `![App form main page](Resources/AppForm.png)
+>- ![App form main page](Resources/AppForm.png)
 
 ### Fields
 - **3DR file (.3dr):** path to the project you want to use for IGES export and OBJ import.
@@ -188,7 +188,7 @@ You can customize:
 
 ## 🗺️ Conceptual workflow
 
->- `![Workflow concept image](Resources/Concept.png)
+>- ![Workflow concept image](Resources/Concept.png)
 ---
 
 ## 📄 License
