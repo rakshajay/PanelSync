@@ -23,7 +23,7 @@ namespace PanelSync.Core.Services
         {
             _fsw.Created += async (s, e) =>
             {
-                _log.Info("//[08/27/2025]:Raksha- Detected new file -> " + e.FullPath);
+                _log.Info("Detected new file -> " + e.FullPath);
                 var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
                 var ok = await FileStability.WaitUntilStableAsync(e.FullPath, TimeSpan.FromMilliseconds(400), TimeSpan.FromMilliseconds(120), cts.Token); // :contentReference[oaicite:14]{index=14}
                 if (ok) await stableHandler(e.FullPath);

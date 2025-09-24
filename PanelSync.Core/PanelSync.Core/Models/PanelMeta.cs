@@ -2,6 +2,7 @@
 
 namespace PanelSync.Core.Models
 {
+    //[08/27/2025]:Raksha- Metadata for each exported panel model (sidecar json).
     public sealed class PanelMeta
     {
         public string ProjectId { get; set; } = "";

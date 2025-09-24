@@ -1,14 +1,15 @@
 ﻿//[09/15/2025]:Raksha- JobWatcher (IGES + OBJ support)
 using Inventor;
 using Newtonsoft.Json;
+using PanelSync.Core.Logging;
 using System;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using SysEnv = System.Environment;
-using IOPath = System.IO.Path;
 using IOFile = System.IO.File;
-using PanelSync.Core.Logging;
+using IOPath = System.IO.Path;
+using SysEnv = System.Environment;
 
 namespace PanelSync.InventorAddIn
 {
@@ -32,17 +33,13 @@ namespace PanelSync.InventorAddIn
             _watcher.Renamed += OnCreated;
 
             _watcher.EnableRaisingEvents = true;
-            //foreach (ApplicationAddIn addin in _inv.ApplicationAddIns)
-            //{
-            //    _log.Info($"AddIn: {addin.DisplayName} [{addin.ClassIdString}]");
-            //}
 
-            _log.Info("//[09/15/2025]:Raksha- JobWatcher watching folder: " + folder);
+            _log.Info("JobWatcher watching folder: " + folder);
         }
 
         private void OnCreated(object sender, FileSystemEventArgs e)
         {
-            _log.Info("// OnCreated fired: " + e.FullPath + " (ChangeType=" + e.ChangeType + ")");
+            //_log.Info("OnCreated fired: " + e.FullPath + " (ChangeType=" + e.ChangeType + ")");
             ThreadPool.QueueUserWorkItem(_ => ProcessJobFile(e.FullPath));
         }
 
@@ -50,8 +47,8 @@ namespace PanelSync.InventorAddIn
         {
             try
             {
-                _log.Info("//[09/15/2025]:Raksha- Processing job: " + path);
-                string json = System.IO.File.ReadAllText(path);
+                //_log.Info("Processing job: " + path);
+                string json = IOFile.ReadAllText(path);
 
                 // Peek job kind
                 var kindOnly = JsonConvert.DeserializeObject<dynamic>(json);
@@ -59,7 +56,7 @@ namespace PanelSync.InventorAddIn
 
                 if (string.IsNullOrWhiteSpace(kind))
                 {
-                    _log.Warn("//[09/17/2025]:Raksha- Job missing Kind: " + path);
+                    _log.Warn("Job missing Kind: " + path);
                     return;
                 }
 
@@ -69,7 +66,7 @@ namespace PanelSync.InventorAddIn
                     if (job != null && job.IsValid)
                         ExecuteOpenCreateImport(job);
                     else
-                        _log.Warn("//[09/15/2025]:Raksha- Invalid IGES job: " + path);
+                        _log.Warn("Invalid IGES job: " + path);
                 }
                 else if (kind == "ExportPanelAsOBJ")
                 {
@@ -77,18 +74,18 @@ namespace PanelSync.InventorAddIn
                     if (job != null && job.IsValid)
                         ExecuteExportPanelAsObj(job);
                     else
-                        _log.Warn("//[09/17/2025]:Raksha- Invalid OBJ job: " + path);
+                        _log.Warn("Invalid OBJ job: " + path);
                 }
                 else
                 {
-                    _log.Warn("//[09/17/2025]:Raksha- Unknown job kind: " + kind);
+                    _log.Warn("Unknown job kind: " + kind);
                 }
 
-                System.IO.File.Delete(path);
+                //IOFile.Delete(path);
             }
             catch (Exception ex)
             {
-                _log.Error("//[09/15/2025]:Raksha- Error processing job " + path + ": " + ex);
+                _log.Error("Error processing job " + path, ex);
             }
         }
 
@@ -96,6 +93,12 @@ namespace PanelSync.InventorAddIn
         private void ExecuteOpenCreateImport(OpenOrCreateAndImportJob job)
         {
             if (job.Kind != "OpenOrCreateAndImportIGES") return;
+
+            if (_inv == null)
+            {
+                _log.Warn("Inventor is not running. Please open Inventor before importing IGES.");
+                return;
+            }
 
             PartDocument doc = null;
             foreach (Document d in _inv.Documents)
@@ -116,16 +119,13 @@ namespace PanelSync.InventorAddIn
             var compDef = doc.ComponentDefinition;
             var importedDef = compDef.ReferenceComponents.ImportedComponents.CreateDefinition(job.IgesPath);
             //[09/22/2025]:Raksha- Force import as millimeters
-            //importedDef.ReferenceModel = true;
-            // Units are handled on the Document itself:
             doc.UnitsOfMeasure.LengthUnits = UnitsTypeEnum.kMillimeterLengthUnits;
             compDef.ReferenceComponents.ImportedComponents.Add(importedDef);
-
 
             doc.Save();
             if (job.BringToFront) { doc.Activate(); _inv.ActiveView.Update(); }
 
-            _log.Info("//[09/15/2025]:Raksha- Imported IGES into " + job.IptPath);
+            _log.Info($"✅ IGES import complete: {System.IO.Path.GetFileName(job.IptPath)}");
         }
 
         // === OBJ Export ===
@@ -144,18 +144,15 @@ namespace PanelSync.InventorAddIn
                 }
                 if (doc == null)
                 {
-                    _log.Warn("//[09/17/2025]:Raksha- No open document found for OBJ export: " + job.IptPath);
+                    _log.Warn("OBJ export skipped: " + job.IptPath + " is not open in Inventor. Please open it first.");
                     return;
                 }
-
-                var meta = new PanelSync.Core.Models.PanelMeta
+                var compDef = doc.ComponentDefinition as PartComponentDefinition;
+                if (compDef == null || compDef.SurfaceBodies == null || compDef.SurfaceBodies.Count == 0)
                 {
-                    ProjectId = Guid.NewGuid().ToString("N"),
-                    PanelId = job.PanelId,
-                    Rev = job.Rev,
-                    ExportedAtUtc = DateTime.UtcNow,
-                    Source = new PanelSync.Core.Models.SourceInfo { App = "Inventor", Version = _inv.SoftwareVersion.DisplayVersion }
-                };
+                    _log.Warn("OBJ export skipped: no solid bodies found in Inventor document. Please check and save your part.");
+                    return;
+                }
 
                 // Translator: OBJ export
                 var ctx = _inv.TransientObjects.CreateTranslationContext();
@@ -164,34 +161,67 @@ namespace PanelSync.InventorAddIn
                 var data = _inv.TransientObjects.CreateDataMedium();
                 var outDir = job.OutFolder;
                 Directory.CreateDirectory(outDir);
-                // Unique name: base_panelid_rev_yyyymmddThhmmssZ.obj
+
+                // 🔄 Simple clean filename (no timestamp)
                 var baseName = System.IO.Path.GetFileNameWithoutExtension(job.IptPath);
-                var objName = $"{baseName}_{job.PanelId}_r{job.Rev}_{DateTime.UtcNow:yyyyMMddTHHmmssZ}.obj";
+                var objName = $"{baseName}_{job.PanelId}_r{job.Rev}.obj";
                 var objPath = System.IO.Path.Combine(outDir, objName);
+
+                // 🔄 Always overwrite old file
+                if (System.IO.File.Exists(objPath))
+                {
+                    try { System.IO.File.Delete(objPath); } catch { /* ignore */ }
+                }
+
                 data.FileName = objPath;
 
                 var options = _inv.TransientObjects.CreateNameValueMap();
-                //[09/18/2025]:Raksha- Use OBJ Export Translator
                 var addin = _inv.ApplicationAddIns.ItemById["{F539FB09-FC01-4260-A429-1818B14D6BAC}"];
                 var trans = (TranslatorAddIn)addin;
+                int solidCount = doc.ComponentDefinition.SurfaceBodies
+                   .OfType<SurfaceBody>()
+                   .Count(b => b.IsSolid);
+
+                if (solidCount == 0)
+                {
+                    _log.Warn("⚠️ No solid bodies found in this Inventor document → nothing to export as OBJ.");
+                    return;
+                }
+                else
+                {
+                    _log.Info($"OBJ will export solid bodies from {System.IO.Path.GetFileName(doc.FullFileName)}");
+                }
+
 
                 if (trans.HasSaveCopyAsOptions[doc, ctx, options])
+                {
+                    SetOpt(options, "ExportAllSolids", true);
+                    SetOpt(options, "ExportSelection", 0);
+                    SetOpt(options, "Resolution", 5);
+                    SetOpt(options, "SurfaceType", 0);
+
                     trans.SaveCopyAs(doc, ctx, options, data);
+                }
 
-                // Save OBJ + sidecar meta
-                var guard = new PanelSync.Core.Services.GuardService(_log);
-                var exp = new PanelSync.Core.Services.ExportService(_log, guard);
-                var bytes = System.IO.File.ReadAllBytes(objPath);
-                exp.SavePanelModel(job.OutFolder, meta, bytes, "obj");
+                // Force timestamp refresh so Explorer shows new export time
+                System.IO.File.SetLastWriteTimeUtc(objPath, DateTime.UtcNow);
 
-                _log.Info("//[09/17/2025]:Raksha- Exported OBJ -> " + objPath);
+                _log.Info("Exported OBJ -> " + objPath);
                 if (job.BringToFront) { doc.Activate(); _inv.ActiveView.Update(); }
             }
             catch (Exception ex)
             {
-                _log.Error("//[09/17/2025]:Raksha- ExportPanelAsOBJ failed", ex);
+                _log.Error("ExportPanelAsOBJ failed", ex);
             }
         }
+
+        //[09/23/2025]:Raksha- Helper to set translator option safely (no HasKey)
+        private void SetOpt(NameValueMap opts, string key, object value)
+        {
+            try { opts.Value[key] = value; }                   // try set
+            catch { try { opts.Add(key, value); } catch { } }  // else add
+        }
+
 
         public void Dispose()
         {
@@ -232,6 +262,7 @@ namespace PanelSync.InventorAddIn
             && !string.IsNullOrWhiteSpace(IgesPath);
     }
 
+    //[09/23/2025]:Raksha- Lightweight stability check for job files
     internal static class FileStability
     {
         public static async Task<bool> WaitUntilStableAsync(string path, int firstDelayMs, int pollMs, int timeoutMs)

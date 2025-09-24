@@ -25,7 +25,7 @@ namespace PanelSync.Core.Services
             var latest = files.OrderByDescending(f => f).FirstOrDefault();
             if (latest == null) return null;
 
-            _log.Debug("//[08/27/2025]:Raksha- Latest candidate -> " + latest);
+            _log.Debug("Latest candidate -> " + latest);
 
             // wait for stability (handles external writers)  :contentReference[oaicite:13]{index=13}
             var ok = await FileStability.WaitUntilStableAsync(latest,
