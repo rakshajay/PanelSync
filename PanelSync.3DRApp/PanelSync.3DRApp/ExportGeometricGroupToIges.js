@@ -53,17 +53,58 @@ try {
     // Convert to CAD shapes
     var shapes = [];
     for (var q = 0; q < picked.length; q++) {
-        var conv = SCADUtil.Convert(picked[q]);
-        if (conv && conv.ErrorCode === 0 && conv.Shape) shapes.push(conv.Shape);
-        else log("Skipped " + picked[q].toString() + " (convert error)");
+        var obj = picked[q];
+        var s = obj.toString();
+
+        try {
+            if (s.indexOf("Multiline") >= 0) {
+                // Expand multiline into segments
+                var n = (obj.GetNumber ? obj.GetNumber() : 0);
+                if (n >= 2) {
+                    for (var i = 0; i < n - 1; i++) {
+                        var p1 = obj.GetPoint(i);
+                        var p2 = obj.GetPoint(i + 1);
+                        var line = SLine.New(p1, p2);
+                        var convLine = SCADUtil.Convert(line);
+                        if (convLine && convLine.ErrorCode === 0 && convLine.Shape) {
+                            shapes.push(convLine.Shape);
+                            log("   Added multiline segment " + i);
+                        } else {
+                            log("   Failed to convert multiline segment " + i);
+                        }
+                    }
+                    // close loop if flagged
+                    if (obj.IsClosed && obj.IsClosed()) {
+                        var p1 = obj.GetPoint(n - 1);
+                        var p2 = obj.GetPoint(0);
+                        var line = SLine.New(p1, p2);
+                        var convLine = SCADUtil.Convert(line);
+                        if (convLine && convLine.ErrorCode === 0 && convLine.Shape) {
+                            shapes.push(convLine.Shape);
+                            log("   Added closing segment for multiline.");
+                        }
+                    }
+                } else {
+                    log("   Multiline has insufficient points.");
+                }
+            } else {
+                // Normal conversion
+                var conv = SCADUtil.Convert(obj);
+                if (conv && conv.ErrorCode === 0 && conv.Shape) {
+                    shapes.push(conv.Shape);
+                } else {
+                    log("Skipped " + s + " (convert error)");
+                }
+            }
+        } catch (ex) {
+            log("Exception converting " + s + ": " + ex);
+        }
     }
+
     if (shapes.length === 0) throw new Error("No convertible shapes for IGES export.");
 
-    // Units handling: apply a matrix if needed (keep set to identity now)
     var scalingFactor = 1;
-    // Create a new SMatrix object.
     var mtx = SMatrix.New();
-    // Initialize it with a uniform scale.
     mtx.InitScale(SPoint.New(0, 0, 0), scalingFactor, scalingFactor, scalingFactor);
 
     log("Export IGES -> " + out);

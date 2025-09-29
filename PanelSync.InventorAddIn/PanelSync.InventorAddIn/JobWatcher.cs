@@ -39,7 +39,7 @@ namespace PanelSync.InventorAddIn
 
         private void OnCreated(object sender, FileSystemEventArgs e)
         {
-            //_log.Info("OnCreated fired: " + e.FullPath + " (ChangeType=" + e.ChangeType + ")");
+            _log.Info("OnCreated fired: " + e.FullPath + " (ChangeType=" + e.ChangeType + ")");
             ThreadPool.QueueUserWorkItem(_ => ProcessJobFile(e.FullPath));
         }
 
@@ -47,7 +47,7 @@ namespace PanelSync.InventorAddIn
         {
             try
             {
-                //_log.Info("Processing job: " + path);
+                _log.Info("Processing job: " + path);
                 string json = IOFile.ReadAllText(path);
 
                 // Peek job kind
@@ -80,12 +80,17 @@ namespace PanelSync.InventorAddIn
                 {
                     _log.Warn("Unknown job kind: " + kind);
                 }
+                // Extra debug to file
+                System.IO.File.AppendAllText(@"C:\Temp\addin-debug.txt",
+                    DateTime.Now + " - Processing job: " + path + System.Environment.NewLine);
 
-                //IOFile.Delete(path);
+               //IOFile.Delete(path);
             }
             catch (Exception ex)
             {
                 _log.Error("Error processing job " + path, ex);
+                System.IO.File.AppendAllText(@"C:\Temp\addin-debug.txt",
+           DateTime.Now + " - Exception: " + ex.ToString() + System.Environment.NewLine);
             }
         }
 

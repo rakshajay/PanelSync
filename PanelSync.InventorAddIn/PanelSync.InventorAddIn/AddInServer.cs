@@ -14,26 +14,29 @@ namespace PanelSync.InventorAddIn
 		private Application _inv;
 		private JobWatcher _watcher;
 
-		public void Activate(ApplicationAddInSite addInSiteObject, bool firstTime)
-		{
-			_inv = addInSiteObject.Application;
+        public void Activate(ApplicationAddInSite addInSiteObject, bool firstTime)
+        {
+            _inv = addInSiteObject.Application;
 
-			//[09/23/2025]:Raksha- Desktop\PanelSyncHot\Jobs, \logs as single source of truth
-			var desktop = System.IO.Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.UserProfile), "OneDrive", "Desktop");
-			var jobsDir = System.IO.Path.Combine(desktop, "PanelSyncHot", "Jobs");
-			var logsDir = System.IO.Path.Combine(desktop, "PanelSyncHot", "logs");
-			Directory.CreateDirectory(jobsDir);
-			Directory.CreateDirectory(logsDir);
+            // Debug to file
+            var debugLog = @"C:\Temp\addin-debug.txt";
+            Directory.CreateDirectory(System.IO.Path.GetDirectoryName(debugLog));
+            System.IO.File.AppendAllText(debugLog, DateTime.Now + " - AddInServer.Activate called" + System.Environment.NewLine);
 
-			var logPath = System.IO.Path.Combine(logsDir, "inventor-addin.log");
-			var logger = new SimpleFileLogger(logPath);
+            var desktop = System.Environment.GetFolderPath(System.Environment.SpecialFolder.DesktopDirectory);
+            var jobsDir = System.IO.Path.Combine(desktop, "PanelSyncHot", "Jobs");
+            var logsDir = System.IO.Path.Combine(desktop, "PanelSyncHot", "logs");
+            Directory.CreateDirectory(jobsDir);
+            Directory.CreateDirectory(logsDir);
 
-			_watcher = new JobWatcher(_inv, logger, jobsDir);
-			//logger.Info("Add-in activated");
-			//logger.Info("Desktop path => " + desktop);
-		}
+            var logPath = System.IO.Path.Combine(logsDir, "inventor-addin.log");
+            var logger = new SimpleFileLogger(logPath);
 
-		public void Deactivate()
+            _watcher = new JobWatcher(_inv, logger, jobsDir);
+        }
+
+
+        public void Deactivate()
 		{
 			try { _watcher?.Dispose(); } catch { }
 			_inv = null; _watcher = null;
